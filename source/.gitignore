@@ -1,0 +1,3 @@
+# ignore the trained models and generated samples
+models/
+samples/

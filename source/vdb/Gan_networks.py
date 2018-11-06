@@ -1,4 +1,5 @@
-""" Module contains the GAN implementation
+"""
+    Module contains the GAN implementation
     Note that I am using the architecture same as
     Mescheder et al. 2018 (GAN stability)
     link -> https://github.com/LMescheder/GAN_stability/tree/master/gan_training
@@ -30,6 +31,7 @@
 """
 
 import numpy as np
+import torch as th
 
 from torch import nn
 from torch.nn import functional as F
@@ -127,9 +129,11 @@ class Generator(nn.Module):
 
     Args:
         :param z_dim: latent_size
-        :param size: number of layers in between (there are already 2)
-                     (1st layer is latent_size to first volume
-                     and last layer is convert volume to RGB image)
+        :param size: size of the images to be synthesized (h or w)
+                     note this should not be less than 4
+                     (no point in generating images less than 4 x 4)
+                     and, this should be preferably a power of 2.
+                     If not, image will be generated to closest roundoff
         :param final_channels: number of channels in final computational layer
         :param max_channels: max number of channels in any layer
     """
@@ -140,7 +144,8 @@ class Generator(nn.Module):
         super().__init__()
 
         # some peculiar assertions
-        assert size >= 0, "Size of the Network cannot be negative"
+        assert size >= 4, "No point in generating images less than (4 x 4)"
+        assert size & (size - 1) == 0, "size is not a power to 2"
 
         # state of the object (with some shorthands)
         s0 = self.s0 = 4
@@ -192,7 +197,7 @@ class Generator(nn.Module):
 
         # apply the final image converter
         out = self.conv_img(actvn(out))
-        out = F.tanh(out)  # our pixel values are in range [-1, 1]
+        out = th.tanh(out)  # our pixel values are in range [-1, 1]
 
         return out
 
@@ -202,9 +207,11 @@ class Discriminator(nn.Module):
     Discriminator implemented as a torch.nn.Module
 
     Args:
-        :param size: number of layers in between (there are already 2)
-                     (1st layer is latent_size to first volume
-                     and last layer is convert volume to RGB image)
+        :param size: size of the images to be synthesized (h or w)
+                     note this should not be less than 4
+                     (no point in generating images less than 4 x 4)
+                     and, this should be preferably a power of 2.
+                     If not, image will be generated to closest roundoff
         :param num_filters: number of filters in the first layer
         :param max_filters: maximum number of filters in any layer
     """
@@ -215,6 +222,12 @@ class Discriminator(nn.Module):
         # call to super constructor
         super().__init__()
 
+        # make sure that the max_filters are divisible by 2
+        assert max_filters % 2 == 0, "Maximum filters is not an even number"
+        assert num_filters % 2 == 0, "Num filters in first layer is not an even number"
+        assert size >= 4, "No point in generating images smaller than (4 x 4)"
+        assert size & (size - 1) == 0, "size is not a power of 2"
+
         # state of the object and shorthands
         s0 = self.s0 = 4
         nf = self.nf = num_filters
@@ -222,7 +235,6 @@ class Discriminator(nn.Module):
 
         # Submodules required by this module
         num_layers = int(np.log2(size / s0))
-        self.nf0 = min(nf_max, nf * 2 ** num_layers)
 
         # create the block for the Resnet
         blocks = [
@@ -243,18 +255,20 @@ class Discriminator(nn.Module):
         # initial image to volume converter
         self.conv_img = nn.Conv2d(3, nf, 3, padding=1)
 
-        # final predictions maker
-        self.fc = nn.Linear(self.nf0 * s0 * s0, 1)
+        # conv_converter for information bottleneck
+        nf1 = blocks[-1].conv_1.out_channels  # obtain the final number of channels
+        self.conv_converter = nn.Conv2d(nf1, nf1, kernel_size=4, padding=0)
 
-    def forward(self, x):
+        # final predictions maker
+        self.fc = nn.Linear(nf1 // 2, 1)
+
+    def forward(self, x, mean_mode=True):
         """
         forward pass of the module
         :param x: input image tensor [Batch_size x 3 x height x width]
-        :return: prediction scores (Linear): [Batch_size x 1]
+        :param mean_mode: decides whether to sample points or use means directly
+        :return: prediction scores (Linear), mus and sigmas: [Batch_size x 1]
         """
-
-        # extract the batch_size from the tensor
-        batch_size = x.size(0)
 
         # convert image to initial volume
         out = self.conv_img(x)
@@ -262,10 +276,31 @@ class Discriminator(nn.Module):
         # apply the resnet module
         out = self.resnet(out)
 
+        # apply the converter
+        parameters = self.conv_converter(actvn(out))
+
         # flatten the volume
-        out = out.view(batch_size, self.nf0 * self.s0 * self.s0)
+        parameters = parameters.squeeze(-1).squeeze(-1)
+
+        # split the activations into means and standard deviations
+        halfpoint = parameters.shape[-1] // 2
+        mus, sigmas = parameters[:, :halfpoint], parameters[:, halfpoint:]
+        sigmas = F.sigmoid(sigmas)  # sigmas are restricted to be from 0 to 1
+
+        # difference between generator training and discriminator
+        # training (please refer the paper for more info.)
+        if not mean_mode:
+            # sample points from this gaussian distribution
+            # this is for the discriminator
+            out = (th.randn_like(mus).to(x.device) * sigmas) + mus
+
+        else:
+            # just use the means forward
+            # this is for generator
+            out = mus
 
         # apply the final fully connected layer
         out = self.fc(actvn(out))
 
-        return out
+        # return the predictions, mus and sigmas
+        return out, mus, sigmas

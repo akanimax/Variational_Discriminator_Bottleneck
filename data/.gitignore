@@ -2,3 +2,6 @@
 plants
 # This is a soft link (not a directory. 
 # I keep all my data in one place and create softlinks for them in projects)
+
+# ignore the celeba dataset also
+celeba
