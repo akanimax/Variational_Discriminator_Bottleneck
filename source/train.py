@@ -26,9 +26,17 @@ def parse_arguments():
                         default=None,
                         help="pretrained weights file for generator")
 
+    parser.add_argument("--gen_optim_file", action="store", type=str,
+                        default=None,
+                        help="previously saved state of Generator Optimizer")
+
     parser.add_argument("--discriminator_file", action="store", type=str,
                         default=None,
                         help="pretrained_weights file for discriminator")
+
+    parser.add_argument("--dis_optim_file", action="store", type=str,
+                        default=None,
+                        help="previously saved state of Generator Optimizer")
 
     parser.add_argument("--images_dir", action="store", type=str,
                         default="../data/celeba",
@@ -186,7 +194,15 @@ def main(args):
     # create optimizer for generator:
     gen_optim = th.optim.RMSprop(vdb_gan.gen.parameters(), lr=args.g_lr)
 
+    if args.gen_optim_file is not None:
+        print("loading state of the gen optimizer from:", args.gen_optim_file)
+        gen_optim.load_state_dict(th.load(args.gen_optim_file))
+
     dis_optim = th.optim.RMSprop(vdb_gan.dis.parameters(), lr=args.d_lr)
+
+    if args.dis_optim_file is not None:
+        print("loading state of the dis optimizer from:", args.dis_optim_file)
+        dis_optim.load_state_dict(th.load(args.dis_optim_file))
 
     loss_name = args.loss_function.lower()
 

@@ -1,3 +1,6 @@
 # ignore the trained models and generated samples
 models/
 samples/
+
+# ignore the interp_animation_frames
+interp_animation_frames
