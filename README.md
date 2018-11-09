@@ -36,7 +36,7 @@ on the CelebA dataset and the results are shown below.
 
 <p align="center">
 <img alt="generated samples" src="https://github.com/akanimax/Variational_Discriminator_Bottleneck/blob/master/videos/video_1.gif"
-     width=90% height=90% />
+     width=60% height=60% />
 </p>
 <br>
 
@@ -120,7 +120,7 @@ Please Note that all the default values are tuned for
 the CelebA 128x128 experiment. Please refer to the paper for the CIFAR-10 and
 CelebA-HQ experiments. 
 
-## Trained weights for generating cool faces :)
+## Trained weights for generating cool faces / resuming the training :)
 Please refer to the [shared drive](https://drive.google.com/drive/folders/13FGiuqAL1MbSDDFX3FlMxLrv90ACCdKC?usp=drive_open) for the saved weights for 
 this model in PyTorch format.
 
